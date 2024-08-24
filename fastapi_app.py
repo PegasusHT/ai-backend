@@ -1,15 +1,12 @@
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi import FastAPI, File, UploadFile, HTTPException, Form, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware  
 from typing import List
-from fastapi.responses import JSONResponse, RedirectResponse
-import whisper 
+from fastapi.responses import JSONResponse, RedirectResponse, FileResponse
+import whisper
 import torch
 from tempfile import NamedTemporaryFile
-
-torch.cuda.is_available()
-DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
-
-model = whisper.load_model('base', device=DEVICE)
+from gtts import gTTS
+import os
 
 app = FastAPI()
 
@@ -18,8 +15,33 @@ app.add_middleware(
     allow_origins=["http://localhost:3000"],  
     allow_credentials=True,
     allow_methods=["*"],  
-    allow_headers=["*"],  #
+    allow_headers=["*"],  
 )
+
+def cleanup(path: str):
+    if os.path.exists(path):
+        os.unlink(path)
+
+@app.post("/tts/")
+async def text_to_speech(background_tasks: BackgroundTasks, text: str = Form(...), lang: str = Form("en")):
+    try:
+        tts = gTTS(text=text, lang=lang)
+        
+        with NamedTemporaryFile(delete=False, suffix=".mp3") as temp_audio:
+            temp_audio_path = temp_audio.name
+            tts.save(temp_audio_path)
+        
+        background_tasks.add_task(cleanup, temp_audio_path)
+        
+        return FileResponse(temp_audio_path, media_type="audio/mpeg", filename="tts_output.mp3")
+    except Exception as e:
+        if 'temp_audio_path' in locals() and os.path.exists(temp_audio_path):
+            os.unlink(temp_audio_path)
+        raise HTTPException(status_code=500, detail=f"TTS conversion failed: {str(e)}")
+
+def get_whisper_model():
+    DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
+    return whisper.load_model('base', device=DEVICE)
 
 @app.post("/whisper/")
 async def handler(files: List[UploadFile] = File(...)):
@@ -27,6 +49,7 @@ async def handler(files: List[UploadFile] = File(...)):
         raise HTTPException(status_code=400, detail="No files uploaded")
     
     results = []
+    model = get_whisper_model()
 
     for file in files:
         with NamedTemporaryFile(delete=False) as temp:
