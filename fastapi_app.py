@@ -1,4 +1,5 @@
 from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi.middleware.cors import CORSMiddleware  
 from typing import List
 from fastapi.responses import JSONResponse, RedirectResponse
 import whisper 
@@ -11,6 +12,14 @@ DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 model = whisper.load_model('base', device=DEVICE)
 
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],  
+    allow_credentials=True,
+    allow_methods=["*"],  
+    allow_headers=["*"],  #
+)
 
 @app.post("/whisper/")
 async def handler(files: List[UploadFile] = File(...)):

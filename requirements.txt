@@ -2,3 +2,6 @@ fastapi
 aiofiles
 python-multipart
 uvicorn
+fastapi-cors
+whisper
+torch
