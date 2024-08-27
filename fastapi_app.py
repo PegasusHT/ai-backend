@@ -14,7 +14,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000", 
-        "https://interview-ace-ai.vercel.app"
+        "https://interview-ace-ai.vercel.app",
+        'https://ai-backend-378206958409.us-east1.run.app'
     ],  
     allow_credentials=True,
     allow_methods=["*"],  
