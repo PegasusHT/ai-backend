@@ -15,6 +15,6 @@ RUN apt-get update && apt-get install -y ffmpeg
 
 COPY . .
 
-EXPOSE 8000
+EXPOSE 8080
 
-CMD ["uvicorn", "fastapi_app:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "fastapi_app:app", "--host", "0.0.0.0", "--port", "8080"]
