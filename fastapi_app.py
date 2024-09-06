@@ -7,6 +7,10 @@ import torch
 from tempfile import NamedTemporaryFile
 from gtts import gTTS
 import os
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 app = FastAPI()
 
@@ -52,6 +56,7 @@ async def handler(files: List[UploadFile] = File(...)):
     if not files:
         raise HTTPException(status_code=400, detail="No files uploaded")
     
+    logger.info("Starting transcription")
     results = []
     model = get_whisper_model()
 
@@ -67,7 +72,6 @@ async def handler(files: List[UploadFile] = File(...)):
                     'transcript': result["text"]
                 }
             )
-
     return JSONResponse(content={'results': results})
 
 @app.get("/", response_class=RedirectResponse)
