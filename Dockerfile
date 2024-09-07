@@ -4,14 +4,13 @@ WORKDIR /python-docker
 
 COPY requirements.txt requirements.txt
 
-RUN apt-get update && apt-get install -y
+RUN apt-get update && apt-get install -y ffmpeg
 
 RUN pip install -r requirements.txt
 
 RUN apt-get install -y git
 RUN pip install "git+https://github.com/openai/whisper.git"
-
-RUN apt-get update && apt-get install -y ffmpeg
+RUN pip install epitran[flite]
 
 COPY . .
 

@@ -4,3 +4,4 @@ deploy.sh
 certs
 deploySteps
 .env
+.notUsedYet
