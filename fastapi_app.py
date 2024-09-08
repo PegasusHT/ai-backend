@@ -1,6 +1,6 @@
-from fastapi import FastAPI, HTTPException, Form
+from fastapi import FastAPI, File, UploadFile, HTTPException, Form
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 import whisper
 import torch
 from tempfile import NamedTemporaryFile
@@ -14,8 +14,9 @@ import io
 from pydub import AudioSegment
 import asyncio
 import base64
-
+from typing import List
 from pronunciation_trainer import getTrainer
+import eng_to_ipa
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -99,6 +100,18 @@ async def process_audio(audio_tensor: torch.Tensor, title: str):
         logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Error during audio processing: {str(e)}")
 
+
+
+@app.post("/get_phonetic/")
+async def get_phonetic(text: str = Form(...)):
+    try:
+        phonetic = eng_to_ipa.convert(text)
+        return JSONResponse(content={"phonetic": phonetic})
+    except Exception as e:
+        logger.error(f"Error in get_phonetic: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Error in phonetic conversion: {str(e)}")
+
 @app.post("/tts/")
 async def text_to_speech(text: str = Form(...)):
     try:
@@ -121,9 +134,31 @@ async def text_to_speech(text: str = Form(...)):
             cleanup(temp_audio_path)
         raise HTTPException(status_code=500, detail=f"TTS conversion failed: {str(e)}")
 
+@app.post("/whisper/")
+async def handler(files: List[UploadFile] = File(...)):
+    if not files:
+        raise HTTPException(status_code=400, detail="No files uploaded")
+    
+    logger.info("Starting transcription")
+    results = []
+
+    for file in files:
+        with NamedTemporaryFile(delete=False) as temp:
+            with open(temp.name, 'wb') as temp_file:
+                temp_file.write(file.file.read())
+
+            result = whisper_model.transcribe(temp.name)
+            results.append(
+                {
+                    'filename': file.filename,
+                    'transcript': result["text"]
+                }
+            )
+    return JSONResponse(content={'results': results})
+
 @app.get("/")
 async def root():
-    return {"message": "Pronunciation Assessment API"}
+    return RedirectResponse(url="/docs")
 
 if __name__ == "__main__":
     import uvicorn
