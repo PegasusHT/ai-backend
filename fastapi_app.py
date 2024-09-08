@@ -147,7 +147,11 @@ async def handler(files: List[UploadFile] = File(...)):
             with open(temp.name, 'wb') as temp_file:
                 temp_file.write(file.file.read())
 
-            result = whisper_model.transcribe(temp.name)
+            result = whisper_model.transcribe(
+                temp.name,
+                language="en",  
+                task="transcribe",  
+            )
             results.append(
                 {
                     'filename': file.filename,
