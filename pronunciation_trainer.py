@@ -28,12 +28,17 @@ class PronunciationTrainer:
         try:
             start = time.time()
             recording_transcript = self.getAudioTranscript(recordedAudio)
-            print('Time for ASR to transcribe audio: ', str(time.time() - start))
+            print(f'Time for ASR to transcribe audio: {time.time() - start}')
+            print(f'ASR Transcript: "{recording_transcript}"')
+
+            if not recording_transcript:
+                print("ASR produced an empty transcript")
+                return self.create_empty_result(real_text)
 
             start = time.time()
             real_and_transcribed_words, real_and_transcribed_words_ipa, mapped_words_indices = self.matchSampleAndRecordedWords(
                 real_text, recording_transcript)
-            print('Time for matching transcripts: ', str(time.time() - start))
+            print(f'Time for matching transcripts: {time.time() - start}')
 
             pronunciation_accuracy, current_words_pronunciation_accuracy = self.getPronunciationAccuracy(
                 real_and_transcribed_words_ipa)
@@ -59,7 +64,20 @@ class PronunciationTrainer:
             return self.convert_to_serializable(result)
         except Exception as e:
             print(f"Error in processAudioForGivenText: {str(e)}")
-            raise
+            return self.create_empty_result(real_text)
+
+    def create_empty_result(self, real_text):
+        words = real_text.split()
+        return {
+            'recording_transcript': '',
+            'real_and_transcribed_words': [(word, '-') for word in words],
+            'real_and_transcribed_words_ipa': [(eng_to_ipa.convert(word), '-') for word in words],
+            'pronunciation_accuracy': 0.0,
+            'current_words_pronunciation_accuracy': [0.0] * len(words),
+            'pronunciation_categories': [2] * len(words),
+            'real_words_phonetic': [eng_to_ipa.convert(word) for word in words],
+            'recorded_words_phonetic': []
+        }
 
     def convert_to_serializable(self, obj):
         if isinstance(obj, np.integer):
@@ -82,8 +100,12 @@ class PronunciationTrainer:
         elif recordedAudio.dim() == 1:
             recordedAudio = recordedAudio.unsqueeze(0)
         
+        print(f"Preprocessed audio shape: {recordedAudio.shape}")
+        
         with torch.no_grad():
             emission = self.asr_model(recordedAudio)
+        
+        print(f"ASR model emission shape: {emission.shape}")
         
         transcript = self.decoder(emission[0])
         return transcript

@@ -1,7 +1,6 @@
-from fastapi import FastAPI, File, UploadFile, HTTPException, Form, BackgroundTasks
+from fastapi import FastAPI, HTTPException, Form
 from fastapi.middleware.cors import CORSMiddleware
-from typing import List
-from fastapi.responses import JSONResponse, RedirectResponse, FileResponse
+from fastapi.responses import JSONResponse
 import whisper
 import torch
 from tempfile import NamedTemporaryFile
@@ -14,8 +13,9 @@ import traceback
 import io
 from pydub import AudioSegment
 import asyncio
+import base64
 
-from pronunciation_trainer import PronunciationTrainer, getTrainer
+from pronunciation_trainer import getTrainer
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -42,92 +42,88 @@ def cleanup(path: str):
 @app.post("/assess_pronunciation/")
 async def assess_pronunciation(
     title: str = Form(...),
-    audio: UploadFile = File(...)
+    base64Audio: str = Form(...)
 ):
-    print(f"Received pronunciation assessment request for title: {title}")
+    logger.info(f"Received pronunciation assessment request for title: {title}")
     try:
-        audio_content = await audio.read()
-        print(f"Audio file: {audio.filename}, Content-Type: {audio.content_type}, Size: {len(audio_content)} bytes")
+        # Extract the base64 audio data
+        audio_data = base64Audio.split(',')[1]
+        audio_bytes = base64.b64decode(audio_data)
+
+        # Log the size of the received audio
+        logger.info(f"Received audio size: {len(audio_bytes)} bytes")
+
+        # Convert to WAV
+        audio = AudioSegment.from_file(io.BytesIO(audio_bytes), format="m4a")
+        audio = audio.set_frame_rate(16000).set_channels(1)
+        wav_io = io.BytesIO()
+        audio.export(wav_io, format="wav")
+        wav_io.seek(0)
+
+        # Log the size of the converted WAV
+        logger.info(f"Converted WAV size: {wav_io.getbuffer().nbytes} bytes")
+
+        # Convert to tensor
+        audio_tensor, sample_rate = torchaudio.load(wav_io)
         
-        audio_tensor = await convert_audio_to_tensor(audio_content)
+        logger.info(f"Audio converted to tensor: shape {audio_tensor.shape}, dtype {audio_tensor.dtype}, sample rate {sample_rate}")
         
         result = await process_audio(audio_tensor, title)
+        logger.info(f"Audio processing completed. Result: {result}")
         
-        return JSONResponse(content=result)
+        return json.dumps(result)
 
     except Exception as e:
-        print(f"Unexpected error in assess_pronunciation: {str(e)}")
-        print(traceback.format_exc())
-        raise HTTPException(status_code=500, detail=f"Unexpected error in pronunciation assessment: {str(e)}")
-
-async def convert_audio_to_tensor(audio_content: bytes) -> torch.Tensor:
-    print("Converting audio to WAV format...")
-    audio_segment = AudioSegment.from_file(io.BytesIO(audio_content), format="m4a")
-    wav_io = io.BytesIO()
-    audio_segment.export(wav_io, format="wav")
-    wav_io.seek(0)
-    
-    print("Converting to torch tensor...")
-    audio_tensor, _ = torchaudio.load(wav_io)
-    return audio_tensor
+        logger.error(f"Error in assess_pronunciation: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Error in pronunciation assessment: {str(e)}")
 
 async def process_audio(audio_tensor: torch.Tensor, title: str):
-    print("Processing audio...")
+    logger.info("Processing audio")
     try:
+        # Log the input to processAudioForGivenText
+        logger.info(f"Input to processAudioForGivenText: audio_tensor shape {audio_tensor.shape}, title '{title}'")
+        
         result = await asyncio.to_thread(trainer.processAudioForGivenText, audio_tensor, title)
-        print("Audio processing completed")
+        
+        # Log the output of processAudioForGivenText
+        logger.info(f"Output of processAudioForGivenText: {result}")
+        
+        if not result['recording_transcript']:
+            logger.warning("No transcription produced by the ASR model")
+        
+        logger.info("Audio processing completed")
         return result
     except Exception as e:
-        print(f"Error during audio processing: {str(e)}")
-        print(traceback.format_exc())
+        logger.error(f"Error during audio processing: {str(e)}")
+        logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Error during audio processing: {str(e)}")
 
 @app.post("/tts/")
-async def text_to_speech(background_tasks: BackgroundTasks, text: str = Form(...)):
+async def text_to_speech(text: str = Form(...)):
     try:
-        tts = gTTS(text=text, lang="en")
+        tts = gTTS(text=text, lang='en')
         
         with NamedTemporaryFile(delete=False, suffix=".mp3") as temp_audio:
             temp_audio_path = temp_audio.name
             tts.save(temp_audio_path)
         
-        background_tasks.add_task(cleanup, temp_audio_path)
+        with open(temp_audio_path, "rb") as audio_file:
+            audio_content = audio_file.read()
         
-        return FileResponse(temp_audio_path, media_type="audio/mpeg", filename="tts_output.mp3")
+        cleanup(temp_audio_path)
+        
+        return JSONResponse(content={
+            "audio": base64.b64encode(audio_content).decode('utf-8')
+        })
     except Exception as e:
         if 'temp_audio_path' in locals() and os.path.exists(temp_audio_path):
-            os.unlink(temp_audio_path)
+            cleanup(temp_audio_path)
         raise HTTPException(status_code=500, detail=f"TTS conversion failed: {str(e)}")
 
-@app.post("/whisper/")
-async def handler(files: List[UploadFile] = File(...)):
-    if not files:
-        raise HTTPException(status_code=400, detail="No files uploaded")
-    
-    logger.info("Starting transcription")
-    results = []
-
-    for file in files:
-        with NamedTemporaryFile(delete=False) as temp:
-            with open(temp.name, 'wb') as temp_file:
-                temp_file.write(file.file.read())
-
-            result = whisper_model.transcribe(temp.name)
-            results.append(
-                {
-                    'filename': file.filename,
-                    'transcript': result["text"]
-                }
-            )
-    return JSONResponse(content={'results': results})
-
-@app.get("/", response_class=RedirectResponse)
-async def redirect_to_docs():
-    return "/docs"
-
-@app.get("/test")
-async def test_endpoint():
-    return {"message": "Test endpoint working"}
+@app.get("/")
+async def root():
+    return {"message": "Pronunciation Assessment API"}
 
 if __name__ == "__main__":
     import uvicorn
