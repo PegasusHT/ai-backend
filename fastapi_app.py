@@ -1,4 +1,4 @@
-from fastapi import FastAPI, File, UploadFile, HTTPException, Form
+from fastapi import FastAPI, File, UploadFile, HTTPException, Form, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 import whisper
@@ -113,25 +113,20 @@ async def get_phonetic(text: str = Form(...)):
         raise HTTPException(status_code=500, detail=f"Error in phonetic conversion: {str(e)}")
 
 @app.post("/tts/")
-async def text_to_speech(text: str = Form(...)):
+async def text_to_speech(text: str = Form(...), lang: str = Form("en")):
     try:
-        tts = gTTS(text=text, lang='en')
+        tts = gTTS(text=text, lang=lang)
         
-        with NamedTemporaryFile(delete=False, suffix=".mp3") as temp_audio:
-            temp_audio_path = temp_audio.name
-            tts.save(temp_audio_path)
+        # Save to a BytesIO object instead of a file
+        audio_io = io.BytesIO()
+        tts.write_to_fp(audio_io)
+        audio_io.seek(0)
         
-        with open(temp_audio_path, "rb") as audio_file:
-            audio_content = audio_file.read()
+        # Encode to base64
+        audio_base64 = base64.b64encode(audio_io.getvalue()).decode()
         
-        cleanup(temp_audio_path)
-        
-        return JSONResponse(content={
-            "audio": base64.b64encode(audio_content).decode('utf-8')
-        })
+        return JSONResponse(content={"audio": audio_base64})
     except Exception as e:
-        if 'temp_audio_path' in locals() and os.path.exists(temp_audio_path):
-            cleanup(temp_audio_path)
         raise HTTPException(status_code=500, detail=f"TTS conversion failed: {str(e)}")
 
 @app.post("/whisper/")
