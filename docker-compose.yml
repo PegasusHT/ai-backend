@@ -5,9 +5,9 @@ services:
       context: .
       dockerfile: Dockerfile
     ports:
-      - "8080:8080"
+      - "8000:8000"
     volumes:
       - .:/python-docker
-    command: uvicorn fastapi_app:app --host 0.0.0.0 --port 8080 --reload
+    command: uvicorn fastapi_app:app --host 0.0.0.0 --port 8000 --reload
     environment:
       - PYTHONUNBUFFERED=1
