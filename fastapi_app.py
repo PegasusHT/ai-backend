@@ -1,3 +1,4 @@
+##fastapi_app.py
 from fastapi import FastAPI, File, UploadFile, HTTPException, Form, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
@@ -17,11 +18,13 @@ import base64
 from typing import List
 from pronunciation_trainer import getTrainer
 import eng_to_ipa
+from routes import dictionary
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI()
+app.include_router(dictionary.router, tags=["dictionary"])
 
 app.add_middleware(
     CORSMiddleware,
