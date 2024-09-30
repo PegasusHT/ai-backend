@@ -19,6 +19,7 @@ from typing import List
 from pronunciation_trainer import getTrainer
 import eng_to_ipa
 from routes import dictionary
+from TTS.api import TTS
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -42,6 +43,56 @@ trainer = getTrainer()
 def cleanup(path: str):
     if os.path.exists(path):
         os.unlink(path)
+
+# Check if we're running on Google Cloud
+RUNNING_ON_GCLOUD = os.getenv('GOOGLE_CLOUD_PROJECT') is not None
+
+# Initialize the TTS model
+try:
+    if RUNNING_ON_GCLOUD:
+        # On Google Cloud, we'll use CPU for cost-efficiency
+        tts = TTS("tts_models/en/vctk/vits")
+    else:
+        # Locally, we'll use GPU if available
+        tts = TTS("tts_models/en/vctk/vits", gpu=torch.cuda.is_available())
+except Exception as e:
+    logger.error(f"Error initializing primary TTS model: {str(e)}")
+    logger.info("Falling back to alternative TTS model...")
+    try:
+        tts = TTS("tts_models/en/ljspeech/tacotron2-DDC", gpu=torch.cuda.is_available())
+    except Exception as e:
+        logger.error(f"Error initializing fallback TTS model: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to initialize TTS model")
+
+# Preload the model to memory
+tts.synthesizer.tts_model.eval()
+
+@app.post("/tts/")
+async def text_to_speech(text: str = Form(...), speaker: str = Form("p243")):
+    try:
+        # Generate speech
+        wav = tts.tts(text=text, speaker=speaker)
+        
+        # Convert numpy array to bytes
+        byte_io = io.BytesIO()
+        tts.synthesizer.save_wav(wav, byte_io)
+        byte_io.seek(0)
+
+        # Encode to base64
+        audio_base64 = base64.b64encode(byte_io.getvalue()).decode()
+
+        return JSONResponse(content={"audio": audio_base64})
+    except Exception as e:
+        logger.error(f"Error in text_to_speech: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"TTS conversion failed: {str(e)}")
+
+@app.on_event("startup")
+async def startup_event():
+    if RUNNING_ON_GCLOUD:
+        # Optimize the instance on startup when running on Google Cloud
+        subprocess.run(["sudo", "swapoff", "-a"])
+        subprocess.run(["sudo", "sysctl", "vm.swappiness=1"])
+        subprocess.run(["sudo", "sysctl", "vm.vfs_cache_pressure=50"])
 
 @app.post("/assess_pronunciation/")
 async def assess_pronunciation(
@@ -103,8 +154,6 @@ async def process_audio(audio_tensor: torch.Tensor, title: str):
         logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Error during audio processing: {str(e)}")
 
-
-
 @app.post("/get_phonetic/")
 async def get_phonetic(text: str = Form(...)):
     try:
@@ -115,22 +164,22 @@ async def get_phonetic(text: str = Form(...)):
         logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Error in phonetic conversion: {str(e)}")
 
-@app.post("/tts/")
-async def text_to_speech(text: str = Form(...), lang: str = Form("en")):
-    try:
-        tts = gTTS(text=text, lang=lang)
+# @app.post("/tts/")
+# async def text_to_speech(text: str = Form(...), lang: str = Form("en")):
+#     try:
+#         tts = gTTS(text=text, lang=lang)
         
-        # Save to a BytesIO object instead of a file
-        audio_io = io.BytesIO()
-        tts.write_to_fp(audio_io)
-        audio_io.seek(0)
+#         # Save to a BytesIO object instead of a file
+#         audio_io = io.BytesIO()
+#         tts.write_to_fp(audio_io)
+#         audio_io.seek(0)
         
-        # Encode to base64
-        audio_base64 = base64.b64encode(audio_io.getvalue()).decode()
+#         # Encode to base64
+#         audio_base64 = base64.b64encode(audio_io.getvalue()).decode()
         
-        return JSONResponse(content={"audio": audio_base64})
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"TTS conversion failed: {str(e)}")
+#         return JSONResponse(content={"audio": audio_base64})
+#     except Exception as e:
+#         raise HTTPException(status_code=500, detail=f"TTS conversion failed: {str(e)}")
 
 @app.post("/whisper/")
 async def handler(files: List[UploadFile] = File(...)):
