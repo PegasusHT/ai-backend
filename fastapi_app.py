@@ -4,6 +4,7 @@ from fastapi.responses import RedirectResponse
 import logging
 import os
 from routes import tts, asr, pronunciation, phonetic, dictionary
+import nltk
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -36,6 +37,11 @@ async def startup_event():
         subprocess.run(["sudo", "swapoff", "-a"])
         subprocess.run(["sudo", "sysctl", "vm.swappiness=1"])
         subprocess.run(["sudo", "sysctl", "vm.vfs_cache_pressure=50"])
+    
+    # Download NLTK data
+    logger.info("Downloading NLTK data...")
+    nltk.download('punkt', quiet=True)
+    logger.info("NLTK data downloaded successfully.")
 
 @app.get("/")
 async def root():
