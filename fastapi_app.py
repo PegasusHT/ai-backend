@@ -19,7 +19,7 @@ app.add_middleware(
 )
 
 # Include routers
-app.include_router(tts.router, tags=["text-to-speech"])
+app.include_router(tts.router, prefix="/tts", tags=["text-to-speech"])
 app.include_router(asr.router, tags=["speech-recognition"])
 app.include_router(pronunciation.router, tags=["pronunciation"])
 app.include_router(phonetic.router, tags=["phonetic"])
