@@ -11,6 +11,8 @@ import nltk
 from concurrent.futures import ThreadPoolExecutor
 import time
 import sys
+from functools import lru_cache
+from collections import OrderedDict
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -18,17 +20,7 @@ logger = logging.getLogger(__name__)
 RUNNING_ON_GCLOUD = os.getenv('GOOGLE_CLOUD_PROJECT') is not None
 
 # Initialize NLTK data
-def download_nltk_data():
-    try:
-        nltk.data.find('tokenizers/punkt')
-        logger.info("NLTK punkt tokenizer already downloaded.")
-    except LookupError:
-        logger.info("Downloading NLTK punkt tokenizer...")
-        nltk.download('punkt', quiet=True)
-        logger.info("NLTK punkt tokenizer downloaded successfully.")
-
-# Call the function to download NLTK data
-download_nltk_data()
+nltk.download('punkt', quiet=True)
 
 # Initialize the TTS model
 try:
@@ -40,7 +32,7 @@ try:
     # Optimize model for inference
     tts.synthesizer.tts_model.eval()
     if torch.cuda.is_available():
-        tts.synthesizer.tts_model.half()  # Use half-precision if GPU is available
+        tts.synthesizer.tts_model.half()
         tts.synthesizer.tts_model.cuda()
 except Exception as e:
     logger.error(f"Error initializing primary TTS model: {str(e)}")
@@ -52,12 +44,31 @@ except Exception as e:
         raise HTTPException(status_code=500, detail="Failed to initialize TTS model")
 
 # Cache for storing generated audio
-audio_cache = {}
+class LRUCache:
+    def __init__(self, capacity):
+        self.cache = OrderedDict()
+        self.capacity = capacity
+
+    def get(self, key):
+        if key not in self.cache:
+            return None
+        self.cache.move_to_end(key)
+        return self.cache[key]
+
+    def put(self, key, value):
+        if key in self.cache:
+            self.cache.move_to_end(key)
+        self.cache[key] = value
+        if len(self.cache) > self.capacity:
+            self.cache.popitem(last=False)
+
+audio_cache = LRUCache(400)
 
 def process_sentence(sentence, speaker):
     cache_key = (sentence, speaker)
-    if cache_key in audio_cache:
-        return audio_cache[cache_key]
+    cached_audio = audio_cache.get(cache_key)
+    if cached_audio:
+        return cached_audio
 
     start_time = time.time()
     wav = tts.tts(text=sentence, speaker=speaker)
@@ -68,7 +79,7 @@ def process_sentence(sentence, speaker):
     byte_io.seek(0)
     audio_data = byte_io.getvalue()
     
-    audio_cache[cache_key] = audio_data
+    audio_cache.put(cache_key, audio_data)
     
     process_time = time.time() - start_time
     print(f"Processed sentence: '{sentence[:30]}...'. TTS time: {tts_time:.4f}s, Total time: {process_time:.4f}s", file=sys.stderr)
@@ -87,12 +98,11 @@ async def process_sentences(sentences, speaker):
 async def text_to_speech(text: str = Form(...), speaker: str = Form("p240")):
     start_time = time.time()
     try:
-        # Ensure NLTK data is available
-        download_nltk_data()
-
+        print(f"Received text: {text[:100]}...")  # Log first 100 characters of received text
+        
         # Split text into sentences
         sentences = nltk.sent_tokenize(text)
-        print(f"Split text into {len(sentences)} sentences.", file=sys.stderr)
+        print(f"Split into {len(sentences)} sentences.", file=sys.stderr)
 
         # Process sentences in parallel
         audio_chunks = await process_sentences(sentences, speaker)
@@ -103,7 +113,6 @@ async def text_to_speech(text: str = Form(...), speaker: str = Form("p240")):
         end_time = time.time()
         total_time = end_time - start_time
         print(f"Successfully processed text to speech. Total processing time: {total_time:.4f} seconds", file=sys.stderr)
-        logger.info(f"Successfully processed text to speech. Total processing time: {total_time:.4f} seconds")
         
         return JSONResponse(content={
             "audio": ",".join(audio_base64_list),
