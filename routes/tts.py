@@ -98,7 +98,7 @@ async def process_sentences(sentences, speaker):
 async def text_to_speech(text: str = Form(...), speaker: str = Form("p240")):
     start_time = time.time()
     try:
-        print(f"Received text: {text[:100]}...")  # Log first 100 characters of received text
+        print(f"Received text: {text[:100]}...")
         
         # Split text into sentences
         sentences = nltk.sent_tokenize(text)
