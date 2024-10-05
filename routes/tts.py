@@ -62,7 +62,7 @@ class LRUCache:
         if len(self.cache) > self.capacity:
             self.cache.popitem(last=False)
 
-audio_cache = LRUCache(400)
+audio_cache = LRUCache(200)
 
 def process_sentence(sentence, speaker):
     cache_key = (sentence, speaker)
