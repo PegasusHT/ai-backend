@@ -1,7 +1,8 @@
-##path: routes/dictionary.py
+# routes/dictionary.py
 from fastapi import APIRouter, HTTPException
 import requests
 from pydantic import BaseModel
+import asyncio
 
 router = APIRouter()
 
@@ -16,7 +17,9 @@ class DictionaryResponse(BaseModel):
 @router.get("/dictionary/{word}", response_model=DictionaryResponse)
 async def get_word_definition(word: str):
     try:
-        response = requests.get(f"{DICTIONARY_API_URL}{word}")
+        loop = asyncio.get_event_loop()
+        response = await loop.run_in_executor(None, requests.get, f"{DICTIONARY_API_URL}{word}")
+
         if response.status_code == 200:
             data = response.json()[0]
             return DictionaryResponse(
