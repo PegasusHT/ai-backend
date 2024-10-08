@@ -32,7 +32,7 @@ async def get_word_definition(word: str):
                             {
                                 'definition': d['definition'],
                                 'example': d.get('example', '')
-                            } for d in meaning['definitions'][:3]  # Limit to 3 definitions
+                            } for d in meaning['definitions'][:2]  # Limit to 2 definitions
                         ]
                     } for meaning in data['meanings']
                 ],
