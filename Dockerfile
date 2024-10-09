@@ -1,7 +1,6 @@
 FROM --platform=linux/amd64 python:3.10-slim
-# FROM python:3.10-slim
 
-WORKDIR /python-docker
+WORKDIR /app
 
 COPY requirements.txt requirements.txt
 
@@ -18,12 +17,6 @@ RUN mkdir -p /root/nltk_data && \
     
 COPY . .
 
-# Print directory contents for debugging
-RUN echo "Directory contents:" && ls -la
-
 EXPOSE 8000
 
-# Print environment variables and attempt to start the app
-CMD echo "PORT: $PORT" && \
-    echo "Directory contents:" && ls -la && \
-    uvicorn fastapi_app:app --host 0.0.0.0 --port $PORT
+CMD uvicorn fastapi_app:app --host 0.0.0.0 --port $PORT
