@@ -1,5 +1,5 @@
-# FROM --platform=linux/amd64 python:3.10-slim
-FROM python:3.10-slim
+FROM --platform=linux/amd64 python:3.10-slim
+# FROM python:3.10-slim
 
 WORKDIR /python-docker
 
@@ -13,6 +13,9 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
+RUN mkdir -p /root/nltk_data && \
+    python -m nltk.downloader -d /root/nltk_data punkt
+    
 COPY . .
 
 # Print directory contents for debugging

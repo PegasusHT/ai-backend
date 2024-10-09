@@ -7,20 +7,19 @@ import base64
 import os
 import logging
 import asyncio
-import nltk
 from concurrent.futures import ThreadPoolExecutor
 import time
 import sys
 from functools import lru_cache
 from collections import OrderedDict
+import nltk
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
 RUNNING_ON_GCLOUD = os.getenv('GOOGLE_CLOUD_PROJECT') is not None
 
-# Initialize NLTK data
-nltk.download('punkt', quiet=True)
+# No need to download NLTK data here since it's already downloaded in Dockerfile
 
 # Initialize the TTS model
 try:
